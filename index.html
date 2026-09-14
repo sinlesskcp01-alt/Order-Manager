@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f766e">
+<title>সহজ অর্ডার ম্যানেজার</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,"Noto Sans Bengali",sans-serif;background:#f4f7f8;color:#17202a}
+header{background:#0f766e;color:#fff;padding:18px 16px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:21px}header p{margin:5px 0 0;font-size:13px;opacity:.9}
+main{max-width:680px;margin:auto;padding:14px 12px 90px}
+.summary{display:flex;gap:9px;margin-bottom:12px}.stat{flex:1;background:#fff;border-radius:13px;padding:12px;box-shadow:0 2px 9px #0000000d}.stat b{display:block;font-size:21px}.stat span{font-size:12px;color:#667}
+button{border:0;border-radius:10px;padding:12px 14px;font-weight:700;cursor:pointer}
+.primary{background:#0f766e;color:white}.secondary{background:#e6f3f1;color:#0f766e}.danger{background:#fee2e2;color:#b91c1c}
+.card,.form{background:#fff;border-radius:14px;padding:14px;margin-bottom:11px;box-shadow:0 2px 9px #0000000b}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin:10px 2px;font-weight:800}
+label{font-size:13px;font-weight:700;display:block;margin:10px 0 5px}input,textarea,select{width:100%;padding:12px;border:1px solid #d7dee2;border-radius:9px;font-size:15px;background:#fff}textarea{min-height:70px;resize:vertical}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.full{grid-column:1/-1}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.actions button{flex:1;min-width:120px}
+.order-head{display:flex;justify-content:space-between;gap:8px}.order-head b{font-size:16px}.badge{font-size:11px;background:#e7f5f1;color:#0f766e;padding:5px 8px;border-radius:20px;white-space:nowrap}
+.meta{font-size:13px;line-height:1.65;color:#455}.price{font-size:17px;font-weight:800;margin-top:6px}
+.empty{text-align:center;color:#7a858d;padding:25px 10px}
+.small{font-size:11px;color:#778}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#17202a;color:white;padding:10px 15px;border-radius:9px;display:none;z-index:20}
+</style>
+</head>
+<body>
+<header><h1>📦 সহজ অর্ডার ম্যানেজার</h1><p>অর্ডার একবার লিখুন • পরে এক ক্লিকে Export করুন</p></header>
+<main>
+<div class="summary">
+  <div class="stat"><b id="count">0</b><span>আজকের অর্ডার</span></div>
+  <div class="stat"><b id="total">৳0</b><span>আজকের মোট</span></div>
+</div>
+
+<div class="form">
+<div class="section-title">➕ নতুন অর্ডার</div>
+<div class="grid">
+<div><label>কাস্টমারের নাম *</label><input id="name" placeholder="নাম"></div>
+<div><label>ফোন নম্বর *</label><input id="phone" inputmode="tel" placeholder="01XXXXXXXXX"></div>
+<div><label>জেলা</label><input id="district" placeholder="জেলা"></div>
+<div><label>থানা/উপজেলা</label><input id="thana" placeholder="থানা"></div>
+<div class="full"><label>গ্রাম/বিস্তারিত ঠিকানা</label><textarea id="address" placeholder="গ্রাম, বাজার, বাসা ইত্যাদি"></textarea></div>
+<div><label>পণ্যের নাম *</label><input id="product" placeholder="যেমন: Intelligence Book"></div>
+<div><label>পরিমাণ</label><input id="qty" type="number" min="1" value="1"></div>
+<div><label>মোট টাকা (COD)</label><input id="amount" type="number" min="0" placeholder="500"></div>
+<div><label>নোট</label><input id="note" placeholder="প্রয়োজনে"></div>
+</div>
+<div class="actions"><button class="primary" onclick="saveOrder()">💾 অর্ডার সেভ করুন</button><button class="secondary" onclick="clearForm()">✖ পরিষ্কার</button></div>
+</div>
+
+<div class="section-title"><span>📅 আজকের অর্ডার</span><button class="secondary" onclick="exportCSV()">📤 Export</button></div>
+<div id="orders"></div>
+
+<div class="card">
+<b>📋 Courier-এর জন্য</b>
+<p class="small">প্রতিটি অর্ডারের “Copy Courier” চাপলে প্রয়োজনীয় তথ্য একসাথে কপি হবে।</p>
+<button class="secondary" onclick="copyAllCourier()">📋 সব অর্ডার কপি</button>
+</div>
+</main>
+<div id="toast"></div>
+
+<script>
+const KEY="easy_orders_v1";
+let editing=null;
+function today(){return new Date().toISOString().slice(0,10)}
+function load(){return JSON.parse(localStorage.getItem(KEY)||"[]")}
+function saveAll(x){localStorage.setItem(KEY,JSON.stringify(x))}
+function el(id){return document.getElementById(id)}
+function toast(t){let x=el("toast");x.textContent=t;x.style.display="block";setTimeout(()=>x.style.display="none",1800)}
+function clearForm(){["name","phone","district","thana","address","product","amount","note"].forEach(id=>el(id).value="");el("qty").value=1;editing=null}
+function saveOrder(){
+ let o={id:editing||Date.now(),date:today(),time:new Date().toLocaleTimeString("bn-BD",{hour:"2-digit",minute:"2-digit"}),name:el("name").value.trim(),phone:el("phone").value.trim(),district:el("district").value.trim(),thana:el("thana").value.trim(),address:el("address").value.trim(),product:el("product").value.trim(),qty:el("qty").value||1,amount:el("amount").value||0,note:el("note").value.trim()};
+ if(!o.name||!o.phone||!o.product){toast("নাম, ফোন ও পণ্যের নাম দিন");return}
+ let all=load();let i=all.findIndex(x=>x.id===o.id);if(i>=0)all[i]=o;else all.unshift(o);saveAll(all);clearForm();render();toast(i>=0?"অর্ডার আপডেট হয়েছে":"অর্ডার সেভ হয়েছে")}
+function todayOrders(){return load().filter(x=>x.date===today())}
+function render(){
+ let os=todayOrders();el("count").textContent=os.length;el("total").textContent="৳"+os.reduce((s,x)=>s+Number(x.amount||0),0);
+ let box=el("orders");box.innerHTML="";
+ if(!os.length){box.innerHTML='<div class="card empty">আজ এখনো কোনো অর্ডার নেই।<br>উপরে থেকে প্রথম অর্ডারটি যোগ করুন।</div>';return}
+ os.forEach((o,n)=>{
+ let d=document.createElement("div");d.className="card";
+ d.innerHTML=`<div class="order-head"><b>#${String(n+1).padStart(3,"0")} — ${esc(o.name)}</b><span class="badge">${esc(o.time)}</span></div>
+ <div class="meta">📱 ${esc(o.phone)}<br>📍 ${esc([o.district,o.thana,o.address].filter(Boolean).join(" → "))}<br>📦 ${esc(o.product)} × ${esc(o.qty)}</div>
+ <div class="price">💰 ৳${Number(o.amount||0)} ${o.note?'<span class="small"> • '+esc(o.note)+'</span>':''}</div>
+ <div class="actions"><button class="secondary" onclick="copyCourier(${o.id})">📋 Copy Courier</button><button class="secondary" onclick="editOrder(${o.id})">✏️ Edit</button><button class="danger" onclick="deleteOrder(${o.id})">🗑️ Delete</button></div>`;
+ box.appendChild(d)
+ })}
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function copyCourier(id){let o=load().find(x=>x.id===id);if(!o)return;let t=`Customer Name: ${o.name}\nPhone: ${o.phone}\nDistrict: ${o.district}\nThana: ${o.thana}\nAddress: ${o.address}\nProduct: ${o.product} × ${o.qty}\nCOD Amount: ${o.amount}`;navigator.clipboard.writeText(t).then(()=>toast("Courier তথ্য কপি হয়েছে"))}
+function copyAllCourier(){let os=todayOrders();if(!os.length){toast("আজ কোনো অর্ডার নেই");return}let t=os.map(o=>`Customer Name: ${o.name}\nPhone: ${o.phone}\nDistrict: ${o.district}\nThana: ${o.thana}\nAddress: ${o.address}\nProduct: ${o.product} × ${o.qty}\nCOD Amount: ${o.amount}`).join("\n\n----------------\n\n");navigator.clipboard.writeText(t).then(()=>toast("সব Courier তথ্য কপি হয়েছে"))}
+function editOrder(id){let o=load().find(x=>x.id===id);if(!o)return;editing=id;["name","phone","district","thana","address","product","qty","amount","note"].forEach(k=>el(k).value=o[k]??"");scrollTo(0,0);toast("অর্ডারটি এডিট মোডে আছে")}
+function deleteOrder(id){if(!confirm("এই অর্ডারটি মুছে ফেলবেন?"))return;saveAll(load().filter(x=>x.id!==id));render();toast("অর্ডার মুছে গেছে")}
+function csvCell(v){return '"'+String(v??"").replace(/"/g,'""')+'"'}
+function exportCSV(){
+ let os=todayOrders();if(!os.length){toast("Export করার মতো অর্ডার নেই");return}
+ let rows=[["Order ID","Date","Time","Customer Name","Phone","District","Thana","Address","Product","Qty","COD Amount","Note"],...os.map(o=>[o.id,o.date,o.time,o.name,o.phone,o.district,o.thana,o.address,o.product,o.qty,o.amount,o.note])];
+ let csv="\ufeff"+rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
+ let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="orders-"+today()+".csv";a.click();URL.revokeObjectURL(a.href);toast("আজকের ডাটা Export হয়েছে")}
+render();
+</script>
+</body>
+</html>
